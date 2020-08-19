@@ -373,15 +373,15 @@ class LiftingSchemeLevel(nn.Module):
 
 
 class BottleneckBlock(nn.Module):
-    def __init__(self, in_planes, out_planes):
+    def __init__(self, in_planes, out_planes, disable_conv):
         super(BottleneckBlock, self).__init__()
         self.bn1 = nn.BatchNorm1d(in_planes)
         self.relu = nn.ReLU(inplace=True)
 
-        self.disable_conv = in_planes == out_planes
-        if not self.disable_conv:
-            self.conv1 = nn.Conv1d(in_planes, out_planes, kernel_size=1, stride=1,
-                                   padding=0, bias=False)
+        self.disable_conv = disable_conv#in_planes == out_planes
+        # if not self.disable_conv:
+        self.conv1 = nn.Conv1d(in_planes, out_planes, kernel_size=1, stride=1,
+                               padding=0, bias=False)
 
     def forward(self, x):
         if self.disable_conv:
@@ -404,14 +404,15 @@ class LevelWASN(nn.Module):
                                        simple_lifting=simple_lifting)
         self.share_weights = share_weights
         if no_bottleneck:
-
-            self.bootleneck = BottleneckBlock(in_planes * 1, in_planes * 1)
+            # We still want to do a BN and RELU, but we will not perform a conv
+            # as the input_plane and output_plare are the same
+            self.bootleneck = BottleneckBlock(in_planes, in_planes, disable_conv = False)
         else:
-            self.bootleneck = BottleneckBlock(in_planes * 4, in_planes * 2)
+            self.bootleneck = BottleneckBlock(in_planes, in_planes, disable_conv = True)
 
     def forward(self, x):
         (L, H) = self.wavelet(x) #10 9 128
-        x = L
+        approx = L
         details = H
 
         r = None
@@ -419,12 +420,12 @@ class LevelWASN(nn.Module):
 
             if self.regu_details:
                 rd = self.regu_details * \
-                     H.abs().mean()
+                     details.abs().mean()
 
 
             # Constrain on the approximation
             if self.regu_approx:
-                rc = self.regu_approx * torch.dist(L.mean(), x.mean(), p=2)
+                rc = self.regu_approx * torch.dist(approx.mean(), x.mean(), p=2)
 
 
             if self.regu_approx == 0.0:
@@ -438,9 +439,9 @@ class LevelWASN(nn.Module):
                 r = rd + rc
 
         if self.bootleneck:
-            return self.bootleneck(x).permute(0, 2, 1), r, details
+            return self.bootleneck(approx).permute(0, 2, 1), r, details
         else:
-            return x, r, details
+            return approx, r, details
 
 class Haar(nn.Module):
     def __init__(self, in_planes, lifting_size, kernel_size, no_bottleneck,
@@ -455,9 +456,9 @@ class Haar(nn.Module):
         if no_bottleneck:
             # We still want to do a BN and RELU, but we will not perform a conv
             # as the input_plane and output_plare are the same
-            self.bootleneck = BottleneckBlock(in_planes * 1, in_planes * 1)
+            self.bootleneck = BottleneckBlock(in_planes, in_planes, disable_conv = False)
         else:
-            self.bootleneck = BottleneckBlock(in_planes * 4, in_planes * 2)
+            self.bootleneck = BottleneckBlock(in_planes, in_planes, disable_conv = True)
 
     def forward(self, x):
         input = x.permute(0, 2, 1)
@@ -501,7 +502,7 @@ class Haar(nn.Module):
 class WASN(nn.Module):
     def __init__(self, num_classes, big_input=True, first_conv=9, extend_channel = 128,
                  number_levels=4, number_level_part=[[1, 0], [1, 0], [1, 0]],
-                 lifting_size=[2, 1], kernel_size=4, no_bootleneck=False,
+                 lifting_size=[2, 1], kernel_size=4, no_bootleneck=True,
                  classifier="mode2", share_weights=False, simple_lifting=False,
                   regu_details=0.01, regu_approx=0.01, haar_wavelet=False):
         super(WASN, self).__init__()
@@ -536,23 +537,23 @@ class WASN(nn.Module):
 
 
         for i in range(number_levels):
-            bootleneck = True
-            if no_bootleneck and i == number_levels - 1:
-                bootleneck = False
+            # bootleneck = True
+            # if no_bootleneck and i == number_levels - 1:
+            #     bootleneck = False
             if i == 0:
 
                 if haar_wavelet:
                     self.levels.add_module(
                         'level_' + str(i),
                         Haar(in_planes,
-                             lifting_size, kernel_size, bootleneck,
+                             lifting_size, kernel_size, no_bootleneck,
                              share_weights, simple_lifting, regu_details, regu_approx)
                     )
                 else:
                     self.levels.add_module(
                         'level_' + str(i),
                         LevelWASN(in_planes,
-                                  lifting_size, kernel_size, bootleneck,
+                                  lifting_size, kernel_size, no_bootleneck,
                                   share_weights, simple_lifting, regu_details, regu_approx)
                     )
             else:
@@ -560,14 +561,14 @@ class WASN(nn.Module):
                     self.levels.add_module(
                         'level_' + str(i),
                         Haar(in_planes,
-                             lifting_size, kernel_size, bootleneck,
+                             lifting_size, kernel_size, no_bootleneck,
                              share_weights, simple_lifting, regu_details, regu_approx)
                     )
                 else:
                     self.levels.add_module(
                         'level_' + str(i),
                         LevelWASN(in_planes,
-                                  lifting_size, kernel_size, bootleneck,
+                                  lifting_size, kernel_size, no_bootleneck,
                                   share_weights, simple_lifting, regu_details, regu_approx)
                     )
             in_planes *= 1
