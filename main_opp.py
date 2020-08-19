@@ -1063,9 +1063,7 @@ if __name__ == '__main__':
                                                                  SLIDING_WINDOW_STEP)  # load_dataset(path) #load_opp_dataset_official(path, SLIDING_WINDOW_LENGTH,
     # SLIDING_WINDOW_STEP)  # load_dataset(path)
 
-    model = WASN(num_classes=18, first_conv=77,
-                 number_levels=4).cuda()  # TemporalModel(in_features = 45, out_features=NUM_CLASSES,
-    # filter_widths=filter_widths, causal=True, dropout=args.dropout, channels=args.channels).cuda()#Baseline(2160, 2, NUM_CLASSES).cuda()
+ 
     model = WASN(num_classes=18, first_conv=77,
                  number_levels=7,
                  number_level_part=[[1, 1], [1, 1], [0, 0], [1, 1], [0, 0], [0, 0], [0, 0]],
